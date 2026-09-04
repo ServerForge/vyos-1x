@@ -26,6 +26,7 @@ from vyos.configdict import get_interface_dict
 from vyos.configdict import is_node_changed
 from vyos.configdict import is_vrf_changed
 from vyos.configdict import get_flowtable_interfaces
+from vyos.configdict import leaf_node_changed
 from vyos.configverify import verify_address
 from vyos.configverify import verify_dhcpv6
 from vyos.configverify import verify_interface_exists
@@ -175,6 +176,12 @@ def get_config(config=None):
     tmp = is_node_changed(conf, base + [ifname, 'duplex'])
     if tmp: ethernet.update({'speed_duplex_changed': {}})
 
+    for option in ['gro', 'gso', 'hw-tc-offload', 'lro', 'rx', 'sg', 'tso']:
+        if leaf_node_changed(conf, base + [ifname, 'offload', option]):
+            ethernet.setdefault('offload_changed', []).append(
+                option.replace('-', '_')
+            )
+
     tmp = is_node_changed(conf, base + [ifname, 'evpn'])
     if tmp: ethernet.update({'frr_dict' : get_frrender_dict(conf)})
 
@@ -302,6 +309,37 @@ def verify_offload(ethernet: dict, ethtool: Ethtool):
     :param ethtool: Ethernet object
     :type ethtool: Ethtool
     """
+    offloads = {
+        'gro': (
+            'generic-receive-offload',
+            ethtool.get_generic_receive_offload(),
+        ),
+        'gso': (
+            'generic-segmentation-offload',
+            ethtool.get_generic_segmentation_offload(),
+        ),
+        'hw_tc_offload': ('hw-tc-offload', ethtool.get_hw_tc_offload()),
+        'lro': ('large-receive-offload', ethtool.get_large_receive_offload()),
+        'rx': ('rx-checksumming', ethtool.get_rx_checksumming()),
+        'sg': ('scatter-gather', ethtool.get_scatter_gather()),
+        'tso': (
+            'tcp-segmentation-offload',
+            ethtool.get_tcp_segmentation_offload(),
+        ),
+    }
+    for option, (feature, state) in offloads.items():
+        configured = dict_search(f'offload.{option}', ethernet) is not None
+        enabled, fixed = state
+        if fixed and configured and not enabled:
+            raise ConfigError(f'Adapter does not support enabling {feature}!')
+        if (
+            fixed
+            and enabled
+            and not configured
+            and option in ethernet.get('offload_changed', [])
+        ):
+            raise ConfigError(f'Adapter does not support disabling {feature}!')
+
     if dict_search('offload.rps', ethernet) != None:
         if not os.path.exists(f'/sys/class/net/{ethernet["ifname"]}/queues/rx-0/rps_cpus'):
             raise ConfigError('Interface does not support RPS!')

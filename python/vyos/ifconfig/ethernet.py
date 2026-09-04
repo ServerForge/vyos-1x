@@ -269,13 +269,8 @@ class EthernetIf(Interface):
             raise ValueError('Value out of range')
 
         enabled, fixed = self.ethtool.get_generic_receive_offload()
-        if enabled != state:
-            if not fixed:
-                return self.set_interface('gro', 'on' if state else 'off')
-            else:
-                print(
-                    'Adapter does not support changing generic-receive-offload settings!'
-                )
+        if enabled != state and not fixed:
+            return self.set_interface('gro', 'on' if state else 'off')
         return False
 
     def set_rx(self, state):
@@ -287,11 +282,8 @@ class EthernetIf(Interface):
             raise ValueError('Value out of range')
 
         enabled, fixed = self.ethtool.get_rx_checksumming()
-        if enabled != state:
-            if not fixed:
-                return self.set_interface('rx', 'on' if state else 'off')
-            else:
-                print('Adapter does not support changing rx-checksumming settings!')
+        if enabled != state and not fixed:
+            return self.set_interface('rx', 'on' if state else 'off')
         return False
 
     def set_gso(self, state):
@@ -306,13 +298,8 @@ class EthernetIf(Interface):
             raise ValueError('Value out of range')
 
         enabled, fixed = self.ethtool.get_generic_segmentation_offload()
-        if enabled != state:
-            if not fixed:
-                return self.set_interface('gso', 'on' if state else 'off')
-            else:
-                print(
-                    'Adapter does not support changing generic-segmentation-offload settings!'
-                )
+        if enabled != state and not fixed:
+            return self.set_interface('gso', 'on' if state else 'off')
         return False
 
     def set_hw_tc_offload(self, state):
@@ -327,11 +314,8 @@ class EthernetIf(Interface):
             raise ValueError('Value out of range')
 
         enabled, fixed = self.ethtool.get_hw_tc_offload()
-        if enabled != state:
-            if not fixed:
-                return self.set_interface('hw-tc-offload', 'on' if state else 'off')
-            else:
-                print('Adapter does not support changing hw-tc-offload settings!')
+        if enabled != state and not fixed:
+            return self.set_interface('hw-tc-offload', 'on' if state else 'off')
         return False
 
     def set_lro(self, state):
@@ -346,13 +330,8 @@ class EthernetIf(Interface):
             raise ValueError('Value out of range')
 
         enabled, fixed = self.ethtool.get_large_receive_offload()
-        if enabled != state:
-            if not fixed:
-                return self.set_interface('lro', 'on' if state else 'off')
-            else:
-                print(
-                    'Adapter does not support changing large-receive-offload settings!'
-                )
+        if enabled != state and not fixed:
+            return self.set_interface('lro', 'on' if state else 'off')
         return False
 
     def set_rps(self, state):
@@ -425,11 +404,8 @@ class EthernetIf(Interface):
             raise ValueError('Value out of range')
 
         enabled, fixed = self.ethtool.get_scatter_gather()
-        if enabled != state:
-            if not fixed:
-                return self.set_interface('sg', 'on' if state else 'off')
-            else:
-                print('Adapter does not support changing scatter-gather settings!')
+        if enabled != state and not fixed:
+            return self.set_interface('sg', 'on' if state else 'off')
         return False
 
     def set_tso(self, state):
@@ -445,13 +421,8 @@ class EthernetIf(Interface):
             raise ValueError('Value out of range')
 
         enabled, fixed = self.ethtool.get_tcp_segmentation_offload()
-        if enabled != state:
-            if not fixed:
-                return self.set_interface('tso', 'on' if state else 'off')
-            else:
-                print(
-                    'Adapter does not support changing tcp-segmentation-offload settings!'
-                )
+        if enabled != state and not fixed:
+            return self.set_interface('tso', 'on' if state else 'off')
         return False
 
     def set_ring_buffer(self, rx_tx, size):

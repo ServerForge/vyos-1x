@@ -331,11 +331,46 @@ class EthernetInterfaceTest(BasicInterfaceTest.TestCase):
             frrconfig = self.getFRRconfig(f'interface {interface}', stop_section='^exit')
             self.assertIn(' evpn mh uplink', frrconfig)
 
+    def test_ethtool_offload_fixed(self):
+        offloads = {
+            'gro': Ethtool.get_generic_receive_offload,
+            'gso': Ethtool.get_generic_segmentation_offload,
+            'hw-tc-offload': Ethtool.get_hw_tc_offload,
+            'lro': Ethtool.get_large_receive_offload,
+            'rx': Ethtool.get_rx_checksumming,
+            'sg': Ethtool.get_scatter_gather,
+            'tso': Ethtool.get_tcp_segmentation_offload,
+        }
+        for interface in self._interfaces:
+            ethtool = Ethtool(interface)
+            for option, get_state in offloads.items():
+                active, fixed = get_state(ethtool)
+                if not fixed:
+                    continue
+
+                path = self._base_path + [interface, 'offload', option]
+                if active:
+                    self.cli_set(
+                        self._base_path + [interface, 'description', option]
+                    )
+                    self.cli_commit()
+                    self.cli_set(path)
+                    self.cli_commit()
+                    self.cli_delete(path)
+                    with self.assertRaises(ConfigSessionError):
+                        self.cli_commit()
+                    self.cli_discard()
+                else:
+                    self.cli_set(path)
+                    with self.assertRaises(ConfigSessionError):
+                        self.cli_commit()
+                    self.cli_discard()
+
     def test_ethtool_offload_rx(self):
         for interface in self._interfaces:
             ethtool = Ethtool(interface)
             active, fixed = ethtool.get_rx_checksumming()
-            
+
             # Skip if adapter does not support changing rx checksumming
             if fixed:
                 continue

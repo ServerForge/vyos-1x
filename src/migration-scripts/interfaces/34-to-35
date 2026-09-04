@@ -1,0 +1,98 @@
+#!/usr/bin/env python3
+#
+# Copyright VyOS maintainers and contributors <maintainers@vyos.io>
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License version 2 or later as
+# published by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+
+import re
+from pathlib import Path
+
+from vyos.configtree import ConfigTree
+from vyos.ethtool import Ethtool
+from vyos.utils.process import rc_cmd
+
+base = ['interfaces', 'ethernet']
+offload_options = {
+    'gro': 'get_generic_receive_offload',
+    'gso': 'get_generic_segmentation_offload',
+    'hw-tc-offload': 'get_hw_tc_offload',
+    'lro': 'get_large_receive_offload',
+    'rx': 'get_rx_checksumming',
+    'sg': 'get_scatter_gather',
+    'tso': 'get_tcp_segmentation_offload',
+}
+
+
+def get_permanent_mac(ifname: str, sys_class_net: str = '/sys/class/net') -> str:
+    code, out = rc_cmd(f'ethtool -P {ifname}')
+    if code == 0:
+        match = re.search(r'([0-9a-fA-F]{2}(:[0-9a-fA-F]{2}){5})', out)
+        if match and match.group(1) != '00:00:00:00:00:00':
+            return match.group(1).lower()
+
+    try:
+        return Path(f'{sys_class_net}/{ifname}/address').read_text().strip().lower()
+    except OSError:
+        return ''
+
+
+def discover_physical_interfaces(
+    sys_class_net: str = '/sys/class/net',
+) -> dict[str, str]:
+    interfaces = {}
+    net_dir = Path(sys_class_net)
+    if not net_dir.is_dir():
+        return interfaces
+
+    for entry in net_dir.iterdir():
+        if not (entry / 'device').exists() or (entry / 'master').exists():
+            continue
+        mac = get_permanent_mac(entry.name, sys_class_net)
+        if mac:
+            interfaces[entry.name] = mac
+
+    return interfaces
+
+
+def migrate(config: ConfigTree) -> None:
+    if not config.exists(base):
+        return
+
+    configured = {}
+    for ifname in config.list_nodes(base):
+        hw_id_path = base + [ifname, 'hw-id']
+        if config.exists(hw_id_path) and any(
+            config.exists(base + [ifname, 'offload', option])
+            for option in offload_options
+        ):
+            configured[ifname] = config.return_value(hw_id_path).lower()
+
+    if not configured:
+        return
+
+    current = discover_physical_interfaces()
+    current_by_mac = {mac: ifname for ifname, mac in current.items()}
+
+    for ifname, hw_id in configured.items():
+        current_ifname = current_by_mac.get(hw_id)
+        if current_ifname is None:
+            continue
+
+        eth = Ethtool(current_ifname)
+        for option, method in offload_options.items():
+            path = base + [ifname, 'offload', option]
+            if config.exists(path):
+                enabled, fixed = getattr(eth, method)()
+                if fixed and not enabled:
+                    config.delete(path)
